@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PREVENCIÓN - Detector de Somnolencia</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@latest/dist/mobilenet.min.js"></script>
+</head>
+<body>
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1 class="hero-title">PREVENCIÓN</h1>
+            <p class="hero-subtitle">Sistema de Detección de Somnolencia para Conductores</p>
+            <div class="hero-buttons">
+                <button id="startBtn" class="btn btn-primary">Iniciar Detección</button>
+                <button id="stopBtn" class="btn btn-secondary" disabled>Detener</button>
+                <button id="captureBtn" class="btn btn-capture" disabled>Tomar Foto/Video</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Detection Section -->
+    <section class="detection-section">
+        <div class="camera-container">
+            <video id="video" autoplay muted playsinline></video>
+            <canvas id="canvas" style="display: none;"></canvas>
+            <div class="detection-overlay">
+                <div id="statusIndicator" class="status-indicator">
+                    <div class="status-light"></div>
+                    <span id="statusText">Iniciando...</span>
+                </div>
+                <div id="alertBox" class="alert-box hidden">
+                    <div class="alert-content">
+                        <h3>¡ALERTA!</h3>
+                        <p>¡CONDUCTOR DORMIDO DETECTADO!</p>
+                        <div class="alert-actions">
+                            <button id="emergencyBrake" class="btn btn-emergency">FRENAR AHORA</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls-panel">
+            <div class="control-group">
+                <h3>Controles de Seguridad</h3>
+                <button id="brakeBtn" class="btn btn-brake" disabled>FRENAR</button>
+                <button id="analyzeBtn" class="btn btn-analyze" disabled>ANALIZAR</button>
+            </div>
+            
+            <div class="stats-panel">
+                <h3>Estadísticas</h3>
+                <div class="stat-item">
+                    <span>Estado:</span>
+                    <span id="driverStatus">Desconocido</span>
+                </div>
+                <div class="stat-item">
+                    <span>Confianza:</span>
+                    <span id="confidence">0%</span>
+                </div>
+                <div class="stat-item">
+                    <span>Tiempo Activo:</span>
+                    <span id="activeTime">00:00</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Analysis Effect -->
+    <div id="analysisEffect" class="analysis-effect hidden">
+        <div class="analysis-spinner"></div>
+        <p>Analizando estado del conductor...</p>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
