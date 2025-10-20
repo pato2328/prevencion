@@ -7,6 +7,13 @@ let isDetecting = false;
 let detectionInterval = null;
 let startTime = null;
 let alertSound = null;
+let alertConfig = {
+    email: '',
+    driverName: '',
+    vehicleInfo: ''
+};
+let alertsSent = 0;
+let lastAlertTime = 0;
 
 // Estados del conductor
 const DRIVER_STATES = {
@@ -18,6 +25,9 @@ const DRIVER_STATES = {
 
 // Configuración del modelo Teachable Machine
 const MODEL_URL = 'https://teachablemachine.withgoogle.com/models/iH_13-Je9/';
+
+// Configuración de Formspree
+const FORMSPREE_ENDPOINT = 'https://formspree.io/f/mrbykegq';
 
 // Inicialización cuando se carga la página
 document.addEventListener('DOMContentLoaded', function() {
@@ -40,6 +50,12 @@ function setupEventListeners() {
     document.getElementById('brakeBtn').addEventListener('click', emergencyBrake);
     document.getElementById('analyzeBtn').addEventListener('click', analyzeDriver);
     document.getElementById('emergencyBrake').addEventListener('click', emergencyBrake);
+    document.getElementById('saveConfigBtn').addEventListener('click', saveAlertConfig);
+    document.getElementById('testAlertBtn').addEventListener('click', sendTestAlert);
+    document.getElementById('diagnoseBtn').addEventListener('click', diagnoseEmailSystem);
+    
+    // Cargar configuración guardada
+    loadAlertConfig();
 }
 
 // Cargar modelo de Teachable Machine
@@ -133,10 +149,12 @@ function stopDetection() {
     
     updateStatus('Detección detenida', 'unknown');
     hideAlert();
+    hideAutoDetectionIndicator();
 }
 
 // Detección en tiempo real
 function startRealTimeDetection() {
+    // Detectar cada 500ms para mayor sensibilidad
     detectionInterval = setInterval(async () => {
         if (!isDetecting || !model) return;
         
@@ -146,7 +164,10 @@ function startRealTimeDetection() {
         } catch (error) {
             console.error('Error en detección:', error);
         }
-    }, 1000); // Detectar cada segundo
+    }, 500); // Detectar cada 500ms para mayor sensibilidad
+    
+    // Mostrar indicador de detección automática
+    showAutoDetectionIndicator();
 }
 
 // Predecir estado del conductor
@@ -182,13 +203,22 @@ function handleDriverState(prediction) {
         statusText = 'CONDUCTOR DORMIDO';
         showAlert();
         playAlertSound();
+        
+        // Actualizar indicador de detección automática
+        updateAutoDetectionIndicator(true);
+        
+        // Enviar alerta por email si está configurado
+        sendEmailAlertWithFallback(driverState, confidence);
+        
     } else if (isEyesClosed && confidence > 0.4) {
         driverState = DRIVER_STATES.SLEEPY;
         statusText = 'CONDUCTOR SOMNOLIENTO';
+        updateAutoDetectionIndicator(false);
     } else {
         driverState = DRIVER_STATES.AWAKE;
         statusText = 'CONDUCTOR DESPIERTO';
         hideAlert();
+        updateAutoDetectionIndicator(false);
     }
     
     updateDriverStatus(driverState, statusText, confidence);
@@ -380,3 +410,377 @@ document.addEventListener('visibilitychange', function() {
         updateStatus('Detección activa', 'awake');
     }
 });
+
+// ===== FUNCIONES DE CONFIGURACIÓN DE ALERTAS =====
+
+// Guardar configuración de alertas
+function saveAlertConfig() {
+    const email = document.getElementById('emailInput').value.trim();
+    const driverName = document.getElementById('driverName').value.trim();
+    const vehicleInfo = document.getElementById('vehicleInfo').value.trim();
+    
+    if (!email || !driverName) {
+        alert('Por favor, completa al menos el email y el nombre del conductor');
+        return;
+    }
+    
+    alertConfig = {
+        email: email,
+        driverName: driverName,
+        vehicleInfo: vehicleInfo
+    };
+    
+    // Guardar en localStorage
+    localStorage.setItem('alertConfig', JSON.stringify(alertConfig));
+    
+    showAnalysisEffect('Configuración guardada correctamente');
+    setTimeout(hideAnalysisEffect, 2000);
+}
+
+// Cargar configuración de alertas
+function loadAlertConfig() {
+    const saved = localStorage.getItem('alertConfig');
+    if (saved) {
+        alertConfig = JSON.parse(saved);
+        document.getElementById('emailInput').value = alertConfig.email || '';
+        document.getElementById('driverName').value = alertConfig.driverName || '';
+        document.getElementById('vehicleInfo').value = alertConfig.vehicleInfo || '';
+    }
+}
+
+// Enviar alerta por email usando Formspree
+async function sendEmailAlert(driverState, confidence) {
+    // Reducir tiempo de espera entre alertas a 10 segundos para mayor sensibilidad
+    const now = Date.now();
+    if (now - lastAlertTime < 10000) {
+        console.log('Alerta bloqueada: muy reciente (esperando 10 segundos)');
+        return;
+    }
+    
+    if (!alertConfig.email) {
+        console.log('No hay email configurado para alertas');
+        showAnalysisEffect('⚠️ Configura tu email para recibir alertas');
+        setTimeout(hideAnalysisEffect, 3000);
+        return;
+    }
+    
+    try {
+        const timestamp = new Date().toLocaleString('es-ES');
+        const confidencePercent = Math.round(confidence * 100);
+        
+        // Formspree requiere FormData con campos específicos
+        const formData = new FormData();
+        formData.append('_subject', `🚨 ALERTA CRÍTICA - CONDUCTOR DORMIDO DETECTADO`);
+        formData.append('_replyto', alertConfig.email);
+        formData.append('_cc', alertConfig.email);
+        
+        // Campos principales para el email
+        formData.append('nombre_conductor', alertConfig.driverName || 'Conductor No Identificado');
+        formData.append('vehiculo', alertConfig.vehicleInfo || 'No especificado');
+        formData.append('tipo_alerta', 'DETECCIÓN DE OJOS CERRADOS');
+        formData.append('nivel_confianza', `${confidencePercent}%`);
+        formData.append('fecha_hora', timestamp);
+        formData.append('ubicacion', 'Sistema de Detección de Somnolencia');
+        
+        // Mensaje principal
+        const mensajePrincipal = `🚨 ALERTA DE SEGURIDAD VIAL 🚨
+
+Se ha detectado que el conductor ${alertConfig.driverName || 'No Identificado'} tiene los ojos cerrados con una confianza del ${confidencePercent}%.
+
+INFORMACIÓN DE LA DETECCIÓN:
+- Conductor: ${alertConfig.driverName || 'No Identificado'}
+- Vehículo: ${alertConfig.vehicleInfo || 'No especificado'}
+- Confianza: ${confidencePercent}%
+- Fecha y Hora: ${timestamp}
+- Tipo: DETECCIÓN DE OJOS CERRADOS
+
+⚠️ ACCIÓN INMEDIATA REQUERIDA ⚠️
+Este conductor puede estar experimentando somnolencia o fatiga al volante, lo que representa un grave riesgo de accidente.
+
+ACCIONES RECOMENDADAS:
+1. Contactar al conductor INMEDIATAMENTE
+2. Sugerir parada de descanso URGENTE
+3. Verificar estado físico del conductor
+4. Si es necesario, activar protocolo de emergencia
+
+Sistema: PREVENCIÓN - Detector de Somnolencia
+Navegador: ${navigator.userAgent}
+URL: ${window.location.href}
+
+Esta es una alerta automática del sistema de detección de somnolencia.`;
+        
+        formData.append('mensaje', mensajePrincipal);
+        formData.append('acciones_emergencia', '1. Contactar al conductor inmediatamente\n2. Sugerir parada de descanso\n3. Verificar estado físico del conductor\n4. Si es necesario, activar protocolo de emergencia');
+        
+        console.log('📧 Enviando alerta de email automática...', {
+            email: alertConfig.email,
+            driverName: alertConfig.driverName,
+            confidence: confidencePercent,
+            timestamp: timestamp
+        });
+        
+        const response = await fetch(FORMSPREE_ENDPOINT, {
+            method: 'POST',
+            body: formData
+        });
+        
+        console.log('📡 Respuesta del servidor Formspree:', response.status, response.statusText);
+        
+        if (response.ok) {
+            alertsSent++;
+            lastAlertTime = now;
+            updateAlertsCounter();
+            
+            console.log('✅ Alerta de email enviada correctamente a:', alertConfig.email);
+            showAnalysisEffect('✅ Alerta enviada por email');
+            setTimeout(hideAnalysisEffect, 2000);
+            
+            // Mostrar notificación visual adicional
+            showEmailNotification();
+            
+        } else {
+            const errorText = await response.text();
+            console.error('❌ Error enviando alerta de email:', response.status, errorText);
+            showAnalysisEffect('❌ Error enviando email. Usando método alternativo...');
+            
+            // Intentar método alternativo inmediatamente
+            setTimeout(() => {
+                sendEmailViaMailto(driverState, confidence);
+            }, 1000);
+        }
+        
+    } catch (error) {
+        console.error('❌ Error de red enviando alerta de email:', error);
+        showAnalysisEffect('❌ Error de conexión. Usando método alternativo...');
+        
+        // Usar método alternativo en caso de error
+        setTimeout(() => {
+            sendEmailViaMailto(driverState, confidence);
+        }, 1000);
+    }
+}
+
+// Mostrar notificación visual de email enviado
+function showEmailNotification() {
+    const notification = document.createElement('div');
+    notification.className = 'email-notification';
+    notification.innerHTML = `
+        <div class="notification-content">
+            <span class="notification-icon">📧</span>
+            <span class="notification-text">Alerta enviada por email</span>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Animar la notificación
+    setTimeout(() => {
+        notification.classList.add('show');
+    }, 100);
+    
+    // Remover después de 3 segundos
+    setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            document.body.removeChild(notification);
+        }, 300);
+    }, 3000);
+}
+
+// Actualizar contador de alertas
+function updateAlertsCounter() {
+    document.getElementById('alertsSent').textContent = alertsSent;
+}
+
+// ===== FUNCIONES ADICIONALES DE ALERTAS =====
+
+// Enviar alerta de prueba
+function sendTestAlert() {
+    if (!alertConfig.email) {
+        alert('Por favor, configura primero el email de emergencia');
+        return;
+    }
+    
+    console.log('🧪 Enviando alerta de prueba...');
+    showAnalysisEffect('🧪 Enviando alerta de prueba...');
+    
+    // Forzar envío ignorando el tiempo de espera para pruebas
+    const originalLastAlertTime = lastAlertTime;
+    lastAlertTime = 0;
+    
+    sendEmailAlert(DRIVER_STATES.ASLEEP, 0.85).finally(() => {
+        lastAlertTime = originalLastAlertTime;
+    });
+}
+
+// Función de diagnóstico del sistema de email
+function diagnoseEmailSystem() {
+    console.log('🔍 DIAGNÓSTICO DEL SISTEMA DE EMAIL');
+    console.log('=====================================');
+    console.log('Configuración actual:', alertConfig);
+    console.log('Endpoint Formspree:', FORMSPREE_ENDPOINT);
+    console.log('Navegador:', navigator.userAgent);
+    console.log('URL actual:', window.location.href);
+    console.log('Conexión a internet:', navigator.onLine ? '✅ Conectado' : '❌ Sin conexión');
+    console.log('Última alerta enviada:', new Date(lastAlertTime).toLocaleString());
+    console.log('Total de alertas enviadas:', alertsSent);
+    
+    // Probar conectividad con Formspree
+    testFormspreeConnection();
+}
+
+// Probar conexión con Formspree
+async function testFormspreeConnection() {
+    try {
+        console.log('🌐 Probando conexión con Formspree...');
+        
+        const testData = new FormData();
+        testData.append('_subject', 'Test de Conexión - Sistema PREVENCIÓN');
+        testData.append('message', 'Esta es una prueba de conexión del sistema de detección de somnolencia.');
+        testData.append('timestamp', new Date().toISOString());
+        
+        const response = await fetch(FORMSPREE_ENDPOINT, {
+            method: 'POST',
+            body: testData
+        });
+        
+        console.log('Respuesta de prueba:', response.status, response.statusText);
+        
+        if (response.ok) {
+            console.log('✅ Conexión con Formspree exitosa');
+            showAnalysisEffect('✅ Conexión con Formspree exitosa');
+        } else {
+            console.log('❌ Error en conexión con Formspree:', response.status);
+            showAnalysisEffect('❌ Error en conexión con Formspree');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error de red:', error);
+        showAnalysisEffect('❌ Error de red al conectar con Formspree');
+    }
+    
+    setTimeout(hideAnalysisEffect, 3000);
+}
+
+// Exportar configuración de alertas
+function exportAlertConfig() {
+    const config = {
+        ...alertConfig,
+        exportDate: new Date().toISOString(),
+        alertsSent: alertsSent
+    };
+    
+    const dataStr = JSON.stringify(config, null, 2);
+    const dataBlob = new Blob([dataStr], {type: 'application/json'});
+    
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(dataBlob);
+    link.download = 'configuracion_alertas_somnolencia.json';
+    link.click();
+}
+
+// Mostrar indicador de detección automática
+function showAutoDetectionIndicator() {
+    // Remover indicador existente si hay uno
+    hideAutoDetectionIndicator();
+    
+    const indicator = document.createElement('div');
+    indicator.id = 'autoDetectionIndicator';
+    indicator.className = 'auto-detection-indicator';
+    indicator.innerHTML = '🔍 DETECCIÓN AUTOMÁTICA ACTIVA';
+    
+    document.body.appendChild(indicator);
+}
+
+// Ocultar indicador de detección automática
+function hideAutoDetectionIndicator() {
+    const indicator = document.getElementById('autoDetectionIndicator');
+    if (indicator) {
+        indicator.remove();
+    }
+}
+
+// Actualizar indicador de detección automática
+function updateAutoDetectionIndicator(isAlert = false) {
+    const indicator = document.getElementById('autoDetectionIndicator');
+    if (indicator) {
+        if (isAlert) {
+            indicator.classList.add('active');
+            indicator.innerHTML = '🚨 ALERTA DETECTADA - ENVIANDO EMAIL';
+        } else {
+            indicator.classList.remove('active');
+            indicator.innerHTML = '🔍 DETECCIÓN AUTOMÁTICA ACTIVA';
+        }
+    }
+}
+
+// Método alternativo de envío de email usando mailto
+function sendEmailViaMailto(driverState, confidence) {
+    const timestamp = new Date().toLocaleString('es-ES');
+    const confidencePercent = Math.round(confidence * 100);
+    
+    const subject = `🚨 ALERTA DE SOMNOLENCIA - ${alertConfig.driverName}`;
+    const body = `
+ALERTA DE SEGURIDAD VIAL - SISTEMA PREVENCIÓN
+
+INFORMACIÓN DEL CONDUCTOR:
+- Nombre: ${alertConfig.driverName}
+- Vehículo: ${alertConfig.vehicleInfo || 'No especificado'}
+
+DETECCIÓN:
+- Tipo: DETECCIÓN DE OJOS CERRADOS
+- Confianza: ${confidencePercent}%
+- Timestamp: ${timestamp}
+- Ubicación: Sistema de Detección de Somnolencia
+
+MENSAJE DE EMERGENCIA:
+Se ha detectado que el conductor ${alertConfig.driverName} tiene los ojos cerrados con una confianza del ${confidencePercent}%. Esto puede indicar somnolencia o fatiga al volante.
+
+ACCIONES RECOMENDADAS:
+1. Contactar al conductor inmediatamente
+2. Sugerir parada de descanso
+3. Verificar estado físico del conductor
+4. Si es necesario, activar protocolo de emergencia
+
+INFORMACIÓN DEL SISTEMA:
+- Sistema: PREVENCIÓN - Detector de Somnolencia
+- Navegador: ${navigator.userAgent}
+- URL: ${window.location.href}
+
+Esta es una alerta automática del sistema de detección de somnolencia.
+    `.trim();
+    
+    const mailtoUrl = `mailto:${alertConfig.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    
+    // Crear enlace temporal y hacer clic
+    const link = document.createElement('a');
+    link.href = mailtoUrl;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    console.log('📧 Abriendo cliente de email con mailto');
+    showAnalysisEffect('📧 Abriendo cliente de email...');
+    setTimeout(hideAnalysisEffect, 3000);
+}
+
+// Función mejorada de envío de email con fallback
+async function sendEmailAlertWithFallback(driverState, confidence) {
+    console.log('📧 Intentando envío de email...');
+    
+    // Primero intentar con Formspree
+    try {
+        await sendEmailAlert(driverState, confidence);
+        return; // Si funciona, salir
+    } catch (error) {
+        console.log('❌ Formspree falló, intentando método alternativo...');
+    }
+    
+    // Si Formspree falla, usar mailto como respaldo
+    if (alertConfig.email) {
+        sendEmailViaMailto(driverState, confidence);
+        alertsSent++;
+        updateAlertsCounter();
+    }
+}

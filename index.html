@@ -51,6 +51,30 @@
                 <button id="analyzeBtn" class="btn btn-analyze" disabled>ANALIZAR</button>
             </div>
             
+            <div class="alert-config">
+                <h3>Configuración de Alertas</h3>
+                <div class="config-help">
+                    <p>📧 <strong>ALERTAS AUTOMÁTICAS:</strong> El sistema enviará un email automáticamente cada vez que detecte ojos cerrados en la cámara.</p>
+                    <p>🔍 <strong>DETECCIÓN EN TIEMPO REAL:</strong> Analiza tu rostro cada 500ms para máxima sensibilidad.</p>
+                </div>
+                <div class="config-item">
+                    <label for="emailInput">Email de Emergencia:</label>
+                    <input type="email" id="emailInput" placeholder="ejemplo@email.com" required />
+                    <small>Este email recibirá las alertas de somnolencia</small>
+                </div>
+                <div class="config-item">
+                    <label for="driverName">Nombre del Conductor:</label>
+                    <input type="text" id="driverName" placeholder="Nombre completo" />
+                </div>
+                <div class="config-item">
+                    <label for="vehicleInfo">Información del Vehículo:</label>
+                    <input type="text" id="vehicleInfo" placeholder="Marca, Modelo, Placa" />
+                </div>
+                <button id="saveConfigBtn" class="btn btn-save">Guardar Configuración</button>
+                <button id="testAlertBtn" class="btn btn-test">Enviar Alerta de Prueba</button>
+                <button id="diagnoseBtn" class="btn btn-diagnose">Diagnosticar Sistema</button>
+            </div>
+            
             <div class="stats-panel">
                 <h3>Estadísticas</h3>
                 <div class="stat-item">
@@ -64,6 +88,10 @@
                 <div class="stat-item">
                     <span>Tiempo Activo:</span>
                     <span id="activeTime">00:00</span>
+                </div>
+                <div class="stat-item">
+                    <span>Alertas Enviadas:</span>
+                    <span id="alertsSent">0</span>
                 </div>
             </div>
         </div>
